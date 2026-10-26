@@ -1,0 +1,582 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Delivery Ops Room</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=Work+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+/* Layout: ops bar, diagnosis (trend, journey, root causes) → segments → improvement levers → at-risk orders; agent rail right */
+:root{
+  --bg:#eff3f1; --surface:#ffffff; --surface-2:#e5ece9; --line:#d0dcd7; --fg:#0f1b17; --muted:#56675f;
+  --accent:#0c7a55; --accent-soft:#d3efe3; --ink2:#4b55c9; --signal:#d06a12;
+  --crit:#c4362b; --warn:#b3730c; --good:#2a8a52;
+  --c1:#0c7a55; --c2:#4b55c9; --c3:#d06a12; --c4:#b23a6c; --c5:#2f86b8; --c6:#8a9993;
+  --display:"Sora", "Segoe UI", system-ui, sans-serif;
+  --body:"Work Sans", "Segoe UI", system-ui, sans-serif;
+  --mono:"IBM Plex Mono", ui-monospace, Menlo, monospace;
+  --r:10px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0c1311; --surface:#121b18; --surface-2:#192521; --line:#25352f; --fg:#e2ebe7; --muted:#8ea29a;
+  --accent:#3ccf96; --accent-soft:#113a2c; --ink2:#8f97f5; --signal:#f29a4c;
+  --crit:#f26b5c; --warn:#e9b04a; --good:#5ec486;
+  --c1:#3ccf96; --c2:#8f97f5; --c3:#f29a4c; --c4:#ee7aa8; --c5:#6ab8e8; --c6:#6c7f78;
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0c1311; --surface:#121b18; --surface-2:#192521; --line:#25352f; --fg:#e2ebe7; --muted:#8ea29a;
+  --accent:#3ccf96; --accent-soft:#113a2c; --ink2:#8f97f5; --signal:#f29a4c;
+  --crit:#f26b5c; --warn:#e9b04a; --good:#5ec486;
+  --c1:#3ccf96; --c2:#8f97f5; --c3:#f29a4c; --c4:#ee7aa8; --c5:#6ab8e8; --c6:#6c7f78;
+  color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:14px;line-height:1.5}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--surface)}
+h1,h2,h3,h4{font-family:var(--display);text-wrap:balance;margin:0;font-weight:700;letter-spacing:-.015em}
+.num,td.n,.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+select,textarea{font:inherit;color:var(--fg);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:7px 10px}
+
+.topbar{position:sticky;top:env(safe-area-inset-top,0px);z-index:9;background:var(--surface);border-bottom:1px solid var(--line)}
+.topbar-in{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding-block:10px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.brand{display:flex;align-items:center;gap:10px;min-width:0}
+.brand h1{font-size:19px}
+.brand small{display:block;color:var(--muted);font-size:12px;font-family:var(--body)}
+.ticker{margin-left:auto;display:flex;gap:14px;align-items:center;flex-wrap:wrap;font-size:12.5px;color:var(--muted)}
+.ticker b{font-family:var(--mono);color:var(--fg);font-weight:500}
+.ticker .bad b{color:var(--crit)}
+
+.page{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:18px;padding-block:18px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));max-width:1660px;margin:0 auto}
+@media (max-width:1180px){.page{grid-template-columns:minmax(0,1fr)}}
+main{display:flex;flex-direction:column;gap:18px;min-width:0}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px;min-width:0}
+.panel-h{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:12px;flex-wrap:wrap}
+.panel-h h3{font-size:16px}
+.panel-h p{margin:2px 0 0;color:var(--muted);font-size:12.5px;max-width:72ch}
+.eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);font-weight:600}
+.grid2{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:18px}
+.grid2e{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px}
+@media (max-width:980px){.grid2,.grid2e{grid-template-columns:minmax(0,1fr)}}
+
+.brief{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:18px;display:grid;gap:14px}
+.brief h2{font-size:clamp(20px,2.4vw,26px);max-width:38ch}
+.brief .prob{color:var(--muted);max-width:80ch;margin:6px 0 0}
+.pipe{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid var(--line);border-radius:9px;overflow:hidden}
+.pipe button{all:unset;cursor:pointer;padding:12px 14px;border-right:1px solid var(--line);display:flex;flex-direction:column;gap:2px;min-width:0}
+.pipe button:last-child{border-right:0}
+.pipe button:hover{background:var(--surface-2)}
+.pipe button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.pipe .st{font-size:11px;font-family:var(--mono);color:var(--accent)}
+.pipe b{font-family:var(--display);font-size:14.5px}
+.pipe .d{color:var(--muted);font-size:12px}
+.pipe .v{font-family:var(--mono);font-size:12px}
+@media (max-width:700px){.pipe{grid-template-columns:repeat(2,minmax(0,1fr))}.pipe button:nth-child(2){border-right:0}.pipe button:nth-child(-n+2){border-bottom:1px solid var(--line)}}
+
+.kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px}
+@media (max-width:1300px){.kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:560px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.kpi .l{font-size:12px;color:var(--muted)}
+.kpi .v{font-family:var(--display);font-size:24px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.2;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.kpi .v small{font-size:13px;font-family:var(--mono);font-weight:500}
+.kpi .s{font-size:12px;color:var(--muted)}
+.up-bad{color:var(--crit)} .up-good{color:var(--good)} .warn{color:var(--warn)}
+
+.chartbox{position:relative;height:260px}
+.chartbox.sm{height:220px}
+.insight{margin-top:10px;font-size:13px;padding:9px 12px;border-radius:0;background:var(--surface-2);border-left:3px solid var(--accent)}
+
+.causes{display:flex;flex-direction:column;gap:8px}
+.cause{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+.cause b{font-size:13.5px}
+.cause .share{font-family:var(--display);font-size:18px;text-align:right}
+.cause .ev{grid-column:1/-1;font-size:12px;color:var(--muted)}
+.cause .bar{grid-column:1/-1;height:6px;border-radius:3px;background:var(--surface-2);position:relative;overflow:hidden}
+.cause .bar i{position:absolute;inset:0 auto 0 0;background:var(--crit);border-radius:3px}
+
+.hm{overflow-x:auto}
+.hm table{border-collapse:separate;border-spacing:3px;width:100%}
+.hm th{font-size:11px;color:var(--muted);font-weight:600;padding:2px 4px;text-align:center;white-space:nowrap}
+.hm th.rl{text-align:left}
+.hm td{text-align:center;font-family:var(--mono);font-size:11.5px;padding:7px 4px;border-radius:4px;font-variant-numeric:tabular-nums}
+
+.tbl{overflow-x:auto;border:1px solid var(--line);border-radius:9px}
+table.t{width:100%;border-collapse:collapse;font-size:13px;min-width:680px}
+table.t th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600;padding:9px 10px;background:var(--surface-2);position:sticky;top:0;z-index:1}
+table.t td{padding:8px 10px;border-top:1px solid var(--line);vertical-align:middle}
+table.t tbody tr.click{cursor:pointer}
+table.t tbody tr.click:hover{background:var(--surface-2)}
+.who b{display:block;font-weight:600}
+.who span{font-size:11.5px;color:var(--muted)}
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;padding:2px 8px;border-radius:999px;white-space:nowrap;background:color-mix(in oklab,var(--pc) 15%,var(--surface));color:var(--pc)}
+.pill::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--pc)}
+.chip{display:inline-block;font-size:11.5px;padding:2px 8px;border-radius:6px;background:var(--surface-2);white-space:nowrap}
+.bar2{display:flex;align-items:center;gap:8px;min-width:100px}
+.bar2 i{display:block;height:6px;border-radius:3px;background:var(--surface-2);flex:1;position:relative;overflow:hidden}
+.bar2 i::after{content:"";position:absolute;inset:0 auto 0 0;width:var(--w);background:var(--bc);border-radius:3px}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:7px 12px;font-weight:600;font-size:13px}
+.btn:hover{background:var(--surface-2)}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+.note{font-size:12px;color:var(--muted)}
+
+/* levers */
+.levers{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+@media (max-width:1100px){.levers{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:600px){.levers{grid-template-columns:minmax(0,1fr)}}
+.lever{border:1px solid var(--line);border-radius:9px;padding:12px;display:flex;flex-direction:column;gap:6px;position:relative}
+.lever[data-on="true"]{border-color:var(--accent);background:color-mix(in oklab,var(--accent) 6%,var(--surface))}
+.lever .top{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
+.lever h4{font-size:14px}
+.lever p{margin:0;font-size:12.5px;color:var(--muted)}
+.lever .meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:auto}
+.sw{position:relative;width:38px;height:22px;flex:none}
+.sw input{position:absolute;inset:0;opacity:0;margin:0;cursor:pointer;width:100%;height:100%}
+.sw span{position:absolute;inset:0;border-radius:11px;background:var(--line);transition:background .2s;pointer-events:none}
+.sw span::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:var(--surface);transition:transform .2s}
+.sw input:checked+span{background:var(--accent)}
+.sw input:checked+span::after{transform:translateX(16px)}
+.sw input:focus-visible+span{outline:2px solid var(--accent);outline-offset:2px}
+.impact{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-top:14px}
+@media (max-width:900px){.impact{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.impact div{background:var(--surface-2);border-radius:8px;padding:9px 11px}
+.impact span{display:block;font-size:11.5px;color:var(--muted)}
+.impact b{font-family:var(--display);font-size:18px;font-variant-numeric:tabular-nums}
+.impact b small{font-size:12px;font-family:var(--mono);font-weight:500;color:var(--muted)}
+
+/* agent */
+.agent{position:sticky;top:calc(env(safe-area-inset-top,0px) + 70px);height:calc(100vh - 96px);display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;min-width:0}
+@media (max-width:1180px){.agent{position:relative;top:0;height:640px}}
+.agent-h{padding:14px 16px 10px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:6px}
+.agent-h .t{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.agent-h h3{font-size:17px;display:flex;gap:8px;align-items:center}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--good);box-shadow:0 0 0 3px color-mix(in oklab,var(--good) 25%,transparent)}
+.engine{all:unset;cursor:pointer;font-size:11.5px;font-family:var(--mono);padding:3px 8px;border-radius:6px;border:1px solid var(--line);color:var(--muted)}
+.engine b{color:var(--accent);font-weight:500}
+.engine:focus-visible{outline:2px solid var(--accent)}
+.ctx{font-size:12px;color:var(--muted)}
+.msgs{flex:1;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:12px}
+.msg{font-size:13.5px;min-width:0}
+.msg.u{align-self:flex-end;background:var(--accent);color:var(--surface);padding:8px 12px;border-radius:12px 12px 3px 12px;max-width:88%}
+.msg.a .body{background:var(--surface-2);padding:10px 12px;border-radius:3px 12px 12px 12px;overflow-wrap:anywhere}
+.msg.a .body p{margin:0 0 7px}.msg.a .body p:last-child{margin:0}
+.msg.a .body ul,.msg.a .body ol{margin:4px 0 8px;padding-left:18px}
+.msg.a .body h4{margin:6px 0 4px;font-size:14.5px}
+.msg.a .body code{font-family:var(--mono);font-size:12px;background:var(--surface);padding:1px 4px;border-radius:4px}
+.msg.a .body table{border-collapse:collapse;font-size:12px;margin:6px 0;display:block;overflow-x:auto}
+.msg.a .body td,.msg.a .body th{border:1px solid var(--line);padding:3px 6px;text-align:left}
+.trace{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px}
+.trace span{font-family:var(--mono);font-size:10.5px;padding:2px 7px;border-radius:5px;border:1px solid var(--line);color:var(--muted);background:var(--surface)}
+.trace span::before{content:"▸ ";color:var(--accent)}
+.thinking{color:var(--muted);font-style:italic}
+.sugg{display:flex;gap:6px;flex-wrap:wrap;padding:10px 16px;border-top:1px solid var(--line)}
+.sugg button{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:4px 10px;font-size:12px;text-align:left}
+.sugg button:hover{background:var(--surface-2);border-color:var(--accent)}
+.composer{display:flex;gap:8px;padding:10px 16px 14px;border-top:1px solid var(--line)}
+.composer textarea{flex:1;resize:none;height:42px;min-width:0}
+.fab{display:none;position:fixed;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:8;border:0;background:var(--accent);color:var(--surface);padding:11px 16px;border-radius:999px;font-weight:700;box-shadow:0 6px 18px rgb(0 0 0 / .2)}
+@media (max-width:1180px){.fab{display:block}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important;scroll-behavior:auto!important}}
+</style>
+
+<header class="topbar"><div class="topbar-in">
+  <div class="brand">
+    <svg width="34" height="34" viewBox="0 0 34 34" aria-hidden="true"><rect width="34" height="34" rx="9" fill="var(--accent)"/><path d="M6 21V12h12v9M18 15h5l4 4v2" fill="none" stroke="var(--surface)" stroke-width="2.2" stroke-linejoin="round"/><circle cx="11" cy="23" r="2.4" fill="var(--signal)"/><circle cx="23" cy="23" r="2.4" fill="var(--signal)"/></svg>
+    <div><h1>Delivery Ops Room</h1><small>AI root-cause agent · e-commerce, South India · 4 FCs · 3 carriers · assumed data</small></div>
+  </div>
+  <div class="ticker" id="ticker"></div>
+</div></header>
+
+<div class="page">
+<main>
+  <section class="brief">
+    <div>
+      <div class="eyebrow">Problem 11 · Delivery performance crisis</div>
+      <h2>Trucks and warehouses have spare capacity, yet more parcels arrive late every week</h2>
+      <p class="prob">The agent traces every order through pick, pack, linehaul, hub and last mile; fits a regression to explain each hour of delay; ranks the root causes; predicts which of today's orders will be late; and simulates which operational changes fix the most for the least money.</p>
+    </div>
+    <div class="pipe" id="pipe"></div>
+  </section>
+  <div class="kpis" id="kpis"></div>
+
+  <div class="grid2" id="s-trend">
+    <div class="panel">
+      <div class="panel-h"><div><h3>On-time delivery vs capacity, 12 weeks</h3><p>On-time % against the promised date, weekly orders, and fulfilment-centre and fleet utilisation</p></div></div>
+      <div class="chartbox"><canvas id="cTrend" aria-label="On-time trend"></canvas></div>
+      <div class="insight" id="trendInsight"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-h"><div><h3>What customers complain about</h3><p>Support tickets, last 4 weeks, classified by topic</p></div></div>
+      <div class="chartbox"><canvas id="cTickets" aria-label="Complaint topics"></canvas></div>
+    </div>
+  </div>
+
+  <div class="grid2e" id="s-root">
+    <div class="panel">
+      <div class="panel-h"><div><h3>Where the hours go</h3><p>Average hours per stage: on-time orders vs late orders (last 4 weeks)</p></div></div>
+      <div class="chartbox"><canvas id="cStage" aria-label="Hours by stage"></canvas></div>
+    </div>
+    <div class="panel">
+      <div class="panel-h"><div><h3>Root causes, ranked</h3><p>Share of late-order delay hours explained by each factor (regression on 4 weeks of orders)</p></div></div>
+      <div class="causes" id="causes"></div>
+    </div>
+  </div>
+
+  <div class="grid2e" id="s-seg">
+    <div class="panel">
+      <div class="panel-h"><div><h3>On-time % by fulfilment centre × zone</h3><p>Which network legs fail</p></div></div>
+      <div class="hm" id="hmFc"></div>
+      <div class="panel-h" style="margin-top:14px"><div><h3>Late rate by order hour × weekday</h3><p>Orders placed after the evening cut-off at Hyderabad stand out</p></div></div>
+      <div class="hm" id="hmHour"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-h"><div><h3>Carriers &amp; hubs</h3><p>Performance against utilisation. Capacity is not what's failing.</p></div></div>
+      <div class="tbl"><table class="t" style="min-width:520px"><thead><tr><th>Node</th><th>Orders</th><th>On-time</th><th>1st-attempt success</th><th>Utilisation</th></tr></thead><tbody id="nodeRows"></tbody></table></div>
+      <div class="insight" id="nodeInsight"></div>
+    </div>
+  </div>
+
+  <div class="panel" id="s-levers">
+    <div class="panel-h"><div><h3>Improvement levers, simulated</h3><p>Switch levers on to re-run the last 4 weeks of orders with that change. Impact is measured on the same orders, so the levers are directly comparable.</p></div></div>
+    <div class="levers" id="levers"></div>
+    <div class="impact" id="impact"></div>
+    <div class="chartbox sm" style="margin-top:14px"><canvas id="cZone" aria-label="On-time by zone before and after"></canvas></div>
+  </div>
+
+  <div class="panel" id="s-risk">
+    <div class="panel-h"><div><h3>Today's orders likely to be late</h3><p>Open orders scored by the same model. Fix them before the customer notices.</p></div><span class="note" id="riskNote"></span></div>
+    <div class="tbl" style="max-height:440px;overflow:auto"><table class="t" style="min-width:820px"><thead><tr><th>Order</th><th>Route</th><th>Promise</th><th>Late risk</th><th>Main reason</th><th>Proactive action</th></tr></thead><tbody id="riskRows"></tbody></table></div>
+  </div>
+</main>
+
+<aside class="agent" id="agent" aria-label="Delivery agent">
+  <div class="agent-h">
+    <div class="t"><h3><span class="dot" aria-hidden="true"></span>Ops Agent</h3><button class="engine" id="engineBtn"></button></div>
+    <div class="ctx">Reads orders, warehouses, routes, staffing and delivery scans; can switch levers on and off</div>
+  </div>
+  <div class="msgs" id="msgs" aria-live="polite"></div>
+  <div class="sugg" id="sugg"></div>
+  <form class="composer" id="composer"><textarea id="q" placeholder="Ask about causes, carriers, a FC, an order, what-ifs…" aria-label="Message the agent"></textarea><button class="btn pri" id="sendBtn" type="submit">Send</button></form>
+</aside>
+</div>
+<button class="fab" id="fab">Ask the agent</button>
+
+<script>
+(function(){
+"use strict";
+function rng(seed){return function(){seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const R=rng(11112026);
+const gauss=()=>{let u=0,v=0;while(!u)u=R();while(!v)v=R();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v)};
+const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const pct=(x,d=1)=>(x*100).toFixed(d)+"%";
+const inr=n=>"₹"+Math.round(n).toLocaleString("en-IN");
+function inrS(n){const a=Math.abs(n);if(a>=1e7)return"₹"+(n/1e7).toFixed(2)+" Cr";if(a>=1e5)return"₹"+(n/1e5).toFixed(1)+" L";return inr(n)}
+const fmt=n=>Math.round(n).toLocaleString("en-IN");
+const cssv=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+function alpha(hex,a){hex=hex.replace("#","");if(hex.length===3)hex=hex.split("").map(c=>c+c).join("");const n=parseInt(hex,16);return`rgba(${n>>16&255},${n>>8&255},${n&255},${a})`}
+function erf(x){const s=Math.sign(x);x=Math.abs(x);const t=1/(1+.3275911*x);const y=1-(((((1.061405429*t-1.453152027)*t)+1.421413741)*t-.284496736)*t+.254829592)*t*Math.exp(-x*x);return s*y}
+const Phi=z=>.5*(1+erf(z/Math.SQRT2));
+const TODAY=Date.UTC(2026,9,26);
+const dl=d=>new Date(TODAY+d*864e5).toLocaleDateString("en-GB",{day:"numeric",month:"short",timeZone:"UTC"});
+const WD=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+
+/* ===================== ASSUMED NETWORK ===================== */
+const FCS={HYD:"Hyderabad FC (Medchal)",BLR:"Bengaluru FC (Hoskote)",MAA:"Chennai FC (Sriperumbudur)",VJA:"Vijayawada FC"};
+const REGIONS=[{r:"Hyderabad",fc:"HYD",w:.34,zone:{metro:.8,tier2:.15,rural:.05}},{r:"Rest of Telangana",fc:"HYD",w:.1,zone:{metro:0,tier2:.55,rural:.45}},{r:"Bengaluru & Karnataka",fc:"BLR",w:.22,zone:{metro:.65,tier2:.25,rural:.1}},{r:"Chennai & Tamil Nadu",fc:"MAA",w:.2,zone:{metro:.6,tier2:.28,rural:.12}},{r:"Andhra Pradesh",fc:"VJA",w:.14,zone:{metro:.15,tier2:.5,rural:.35}}];
+const CARRIERS={SWF:"Swiftlane (own fleet)",PRN:"ParcelRun",QKS:"QuickShip"};
+const ZONES=["metro","tier2","rural"];
+const PROMISE={metro:48,tier2:48,rural:72};          // current promise engine (hours)
+const REAL_PROMISE={metro:48,tier2:72,rural:96};     // promise a delivery-time model would give
+const STD={pick:4,line:6,hub:4,lm:{metro:10,tier2:16,rural:28}};
+const pickW=pairs=>{let x=R()*pairs.reduce((a,p)=>a+p[1],0);for(const p of pairs){x-=p[1];if(x<=0)return p[0]}return pairs[pairs.length-1][0]};
+
+/* week w: 0..11 (11 = last week). Factors switch on over time, which is what broke performance */
+const W=12,DAYS=W*7;
+const fac=w=>({
+  hydFill:w<6?.93:clamp(.93-(w-5)*.035,.7,.93),             // HYD evening shift picker fill rate
+  qksShare:w<4?.25:clamp(.25+(w-3)*.035,.25,.5),           // QuickShip share of tier-2/rural volume (cheaper contract)
+  tightPromise:w>=7,                                        // tier-2 promise cut from 72h to 48h in week 7
+  crossHYD:clamp(.07+Math.max(0,w-3)*.018,.07,.22),         // HYD orders shipped from another FC (stock not positioned)
+  vol:1+w*.016
+});
+const orders=[];let oid=480000;
+for(let day=0;day<DAYS;day++){
+  const w=Math.floor(day/7),F=fac(w),date=day-DAYS,wd=new Date(TODAY+date*864e5).getUTCDay();
+  const n=Math.round(290*F.vol*(wd===1?1.18:wd===0?.85:1));
+  for(let i=0;i<n;i++){
+    const reg=pickW(REGIONS.map(r=>[r,r.w]));const zone=pickW(ZONES.map(z=>[z,reg.zone[z]]));
+    const hour=pickW([[8,3],[9,4],[10,6],[11,8],[12,8],[13,7],[14,6],[15,5],[16,5],[17,5],[18,6],[19,8],[20,9],[21,9],[22,7],[23,4]]);
+    let fc=reg.fc;const crossP=fc==="HYD"?F.crossHYD:.07;const uCross=R();const cross=uCross<crossP;if(cross)fc=fc==="HYD"?pickW([["BLR",.6],["MAA",.4]]):pickW([["HYD",.5],["BLR",.5]]);
+    const uCar=R();const carrier=zone==="metro"?(uCar<.6?"SWF":"PRN"):(uCar<F.qksShare?"QKS":"PRN");
+    const cod=R()<(zone==="rural"?.6:zone==="tier2"?.42:.25);
+    const poorAddr=R()<(zone==="rural"?.34:zone==="tier2"?.17:.07);
+    const rain=reg.fc==="MAA"&&(date===-9||date===-8);
+    const congested=reg.r==="Hyderabad"&&zone==="metro"&&(wd===1||wd===2)&&w>=7;
+    const fillEff=reg.fc==="HYD"||fc==="HYD"?F.hydFill:.95;
+    const cutoff=fc==="HYD"?(F.hydFill<.85?18:21):21;
+    const afterCut=hour>=cutoff;
+    const promise=zone==="tier2"&&!F.tightPromise?72:PROMISE[zone];
+    const uFail=R();
+    const noise=[gauss(),gauss(),gauss(),gauss()];
+    orders.push({id:"OD"+(oid++),day:date,w,wd,hour,region:reg.r,homeFc:reg.fc,fc,zone,carrier,cod,poorAddr,rain,congested,cross,afterCut,fillEff,cutoff,promise,uFail,uCar,uCross,noise});
+  }
+}
+// delivery-time model: each order's stage hours given the operating settings (levers)
+function stages(o,L){
+  const hydSlow=(o.fc==="HYD")&&!L.staff&&o.hour>=14?(1-o.fillEff)*20:0;
+  const afterCut=L.staff?o.hour>=21:o.afterCut;
+  const pick=STD.pick+hydSlow+(afterCut?(24-o.hour)+8:0)+Math.abs(o.noise[0])*1.2;
+  const cross=o.cross&&!(L.position&&o.homeFc==="HYD"&&o.uCross>.06);
+  const line=STD.line+(cross?26:0)+Math.abs(o.noise[1])*1.5;
+  const hub=STD.hub+(o.congested&&!L.hub?11:0)+Math.abs(o.noise[2]);
+  const qks=o.carrier==="QKS";
+  let lm=STD.lm[o.zone]+(qks?10:0)+(o.rain?8:0)+Math.abs(o.noise[3])*2.5;
+  let pf=.05+(o.poorAddr?(L.address?.09:.3):0)+(o.cod&&o.zone==="rural"?.08:0)+(qks?.06:0);
+  const failed=o.uFail<pf;if(failed)lm+=24;
+  return{pick,line,hub,lm,failed,cross,qks,afterCut,total:pick+line+hub+lm};
+}
+const LEVERS=[
+ {k:"staff",t:"Staff the Hyderabad evening shift",d:"Hire 14 pickers and packers for the 2–10 pm shift, restoring the 9 pm dispatch cut-off.",cost:460000,owner:"FC operations"},
+ {k:"position",t:"Forward-position fast movers",d:"Stock the top 300 SKUs ordered in Hyderabad at the Hyderabad FC, so orders stop shipping from Bengaluru or Chennai.",cost:320000,owner:"Inventory planning"},
+ {k:"carrier",t:"Re-allocate tier-2 / rural volume",d:"Move 60% of QuickShip's tier-2 and rural parcels to ParcelRun (+₹9 per parcel).",cost:0,owner:"Logistics procurement"},
+ {k:"address",t:"Pre-dispatch address check",d:"WhatsApp geo-pin and landmark confirmation for low-quality addresses before dispatch.",cost:210000,owner:"Customer experience"},
+ {k:"promise",t:"Model-based promise dates",d:"Promise tier-2 in 3 days and rural in 4, using predicted delivery time instead of fixed rules.",cost:0,owner:"Product / checkout"},
+ {k:"hub",t:"Monday surge crew at Kukatpally hub",d:"Add a 6-person sort crew on Mondays and Tuesdays to clear the weekend backlog.",cost:140000,owner:"Last-mile operations"}
+];
+const LV={};LEVERS.forEach(l=>LV[l.k]=false);
+const NONE={};LEVERS.forEach(l=>NONE[l.k]=false);
+// carrier lever: deterministic 60% of QuickShip parcels move (by their random draw)
+function isMoved(o){return o.carrier==="QKS"&&(o.uCar/fac(o.w).qksShare)<.6}
+function stagesL(o,L){const s=stages(o,{...L,carrier:false});if(L.carrier&&isMoved(o)){const s2=stages({...o,carrier:"PRN"},{...L,carrier:false});return{...s2,moved:true}}return s}
+function evalSet(list,L){
+  let late=0,hrsLate=0,failed=0,n=list.length;const byZone={metro:[0,0],tier2:[0,0],rural:[0,0]};
+  list.forEach(o=>{const s=stagesL(o,L);const prom=L.promise?REAL_PROMISE[o.zone]:o.promise;const isLate=s.total>prom;if(isLate){late++;hrsLate+=s.total-prom}if(s.failed)failed++;byZone[o.zone][0]++;if(!isLate)byZone[o.zone][1]++});
+  const otd=1-late/n;const tickets=(late*.23+failed*.31+n*.012)/n*1000;
+  return{n,otd,late,avgLateDays:late?hrsLate/late/24:0,firstAttempt:1-failed/n,tickets,costLate:(late*240+failed*90)*SCALE(n),byZone:Object.fromEntries(ZONES.map(z=>[z,byZone[z][1]/Math.max(1,byZone[z][0])]))};
+}
+const last4=orders.filter(o=>o.w>=8);
+const MONTHLY=260000;function SCALE(n){return n>=last4.length*.9?MONTHLY/last4.length:1}
+const weekly=Array.from({length:W},(_,w)=>{const os=orders.filter(o=>o.w===w);const r=evalSet(os,NONE);return{w,n:os.length,otd:r.otd,tickets:r.tickets,fcUtil:.66+w*.008+(R()-.5)*.02,fleetUtil:.62+w*.007+(R()-.5)*.02}});
+
+/* ===================== ROOT-CAUSE REGRESSION ===================== */
+// OLS: excess hours (actual − standard for zone) on operational factors
+const FEATS=[
+ {k:"cut",l:"Missed Hyderabad evening cut-off",f:o=>o.afterCut&&o.fc==="HYD"?1:0,ev:"Orders after 6 pm wait for the next morning wave; evening picker fill rate fell from 93% to about 72%."},
+ {k:"hydslow",l:"Slow picking, understaffed HYD shift",f:o=>o.fc==="HYD"&&o.hour>=14?(1-o.fillEff):0,ev:"Afternoon and evening orders at Hyderabad take longer to pick and pack."},
+ {k:"cross",l:"Shipped from the wrong FC (stock not local)",f:o=>o.cross?1:0,ev:"Hyderabad customers increasingly served from Bengaluru or Chennai, adding about a day of linehaul."},
+ {k:"qks",l:"QuickShip on tier-2 / rural lanes",f:o=>o.carrier==="QKS"?1:0,ev:"Cheaper contract moved volume to QuickShip from week 4; slower last mile and more failed attempts."},
+ {k:"addr",l:"Poor address → failed first attempt",f:o=>o.poorAddr?1:0,ev:"Incomplete addresses fail first delivery attempts, adding a full day."},
+ {k:"codr",l:"Rural cash-on-delivery attempts",f:o=>o.cod&&o.zone==="rural"?1:0,ev:"Customer not available or not ready to pay on first visit."},
+ {k:"hubc",l:"Kukatpally hub Monday backlog",f:o=>o.congested?1:0,ev:"Weekend volume piles up at the hub and is sorted late on Monday and Tuesday."},
+ {k:"rain",l:"Chennai rain days",f:o=>o.rain?1:0,ev:"Two days of heavy rain in Chennai; external and not controllable."}
+];
+function ols(X,y){const k=X[0].length;const A=Array.from({length:k},()=>Array(k+1).fill(0));X.forEach((x,i)=>{for(let a=0;a<k;a++){for(let b=0;b<k;b++)A[a][b]+=x[a]*x[b];A[a][k]+=x[a]*y[i]}});
+  for(let c=0;c<k;c++){let p=c;for(let r=c+1;r<k;r++)if(Math.abs(A[r][c])>Math.abs(A[p][c]))p=r;[A[c],A[p]]=[A[p],A[c]];const pv=A[c][c]||1e-9;for(let j=c;j<=k;j++)A[c][j]/=pv;for(let r=0;r<k;r++)if(r!==c){const f=A[r][c];for(let j=c;j<=k;j++)A[r][j]-=f*A[c][j]}}
+  return A.map(r=>r[k])}
+const RC=(()=>{
+  const X=[],y=[],rows=[];last4.forEach(o=>{const s=stages(o,NONE);const x=[1,...FEATS.map(f=>f.f(o)),o.zone==="tier2"?1:0,o.zone==="rural"?1:0];X.push(x);y.push(s.total-(STD.pick+STD.line+STD.hub+STD.lm[o.zone]));rows.push({o,s,x})});
+  const b=ols(X,y);const pred=X.map(x=>x.reduce((a,v,i)=>a+v*b[i],0));const res=y.map((v,i)=>v-pred[i]);const sd=Math.sqrt(res.reduce((a,r)=>a+r*r,0)/res.length);
+  const r2=1-res.reduce((a,r)=>a+r*r,0)/y.reduce((a,v)=>{const m=y.reduce((p,q)=>p+q,0)/y.length;return a+(v-m)**2},0);
+  // attribution: among late orders, delay hours attributed to factors in proportion to coef × x
+  const att=FEATS.map(()=>0);let promiseLate=0,late=0;
+  rows.forEach(r=>{const prom=r.o.promise;if(r.s.total>prom){late++;const parts=FEATS.map((f,i)=>Math.max(0,b[i+1]*r.x[i+1]));const tot=parts.reduce((a,c)=>a+c,0);const over=r.s.total-prom;if(tot>0)parts.forEach((p,i)=>att[i]+=over*p/tot);if(r.s.total<=REAL_PROMISE[r.o.zone])promiseLate++}});
+  const attTot=att.reduce((a,c)=>a+c,0);
+  return{b,sd,r2,causes:FEATS.map((f,i)=>({k:f.k,l:f.l,ev:f.ev,coef:b[i+1],share:att[i]/attTot,prevalence:last4.filter(o=>f.f(o)>0).length/last4.length})).sort((a,c)=>c.share-a.share),promiseLate,late};
+})();
+// complaints (assumed classification of support tickets)
+const TICKETS=[["Where is my order?",34],["Delivered later than promised",27],["Delivery attempt failed / not attempted",16],["Promise date changed",9],["Damaged or wrong item",8],["Rude or no-call delivery agent",6]];
+
+// today's open orders scored by the regression
+const openOrders=(()=>{const F=fac(11);const list=[];for(let i=0;i<1400;i++){const reg=pickW(REGIONS.map(r=>[r,r.w]));const zone=pickW(ZONES.map(z=>[z,reg.zone[z]]));const hour=pickW([[8,3],[10,6],[12,8],[14,6],[16,5],[18,6],[19,8],[20,9],[21,9],[22,7]]);
+  let fc=reg.fc;const cross=fc==="HYD"&&R()<F.crossHYD;if(cross)fc="BLR";const carrier=zone==="metro"?(R()<.6?"SWF":"PRN"):(R()<F.qksShare?"QKS":"PRN");const cod=R()<(zone==="rural"?.6:.3);const poorAddr=R()<(zone==="rural"?.34:zone==="tier2"?.17:.07);
+  const o={id:"OD"+(oid++),region:reg.r,homeFc:reg.fc,fc,zone,carrier,cod,poorAddr,cross,hour,afterCut:fc==="HYD"&&hour>=18,fillEff:fc==="HYD"?F.hydFill:.95,congested:reg.r==="Hyderabad"&&zone==="metro",rain:false,promise:PROMISE[zone]};
+  const x=[1,...FEATS.map(f=>f.f(o)),zone==="tier2"?1:0,zone==="rural"?1:0];const pred=x.reduce((a,v,i)=>a+v*RC.b[i],0)+STD.pick+STD.line+STD.hub+STD.lm[zone];
+  o.pred=pred;o.p=1-Phi((o.promise-pred)/Math.max(RC.sd,10));const parts=FEATS.map((f,i)=>({f,v:RC.b[i+1]*x[i+1]})).sort((a,b)=>b.v-a.v);o.reason=parts[0].v>2?parts[0].f:null;list.push(o)}
+  return list.sort((a,b)=>b.p-a.p)})();
+const ACTION={cut:"Move to the 6 am priority wave; dispatch on first linehaul",hydslow:"Route to the express pick lane",cross:"Upgrade linehaul to overnight air or reallocate local stock",qks:"Re-assign to ParcelRun before manifest closes",addr:"Send WhatsApp geo-pin request before dispatch",codr:"Call to confirm cash and slot; offer UPI on delivery",hubc:"Divert via Madhapur hub",rain:"Notify customer of weather delay"};
+
+/* ===================== RENDER ===================== */
+const charts={};const hasChart=typeof window.Chart!=="undefined";
+function baseOpts(){const m=cssv("--muted"),line=cssv("--line");Chart.defaults.font.family='"Work Sans", "Segoe UI", system-ui, sans-serif';Chart.defaults.font.size=11.5;Chart.defaults.color=m;
+  return{responsive:true,maintainAspectRatio:false,animation:{duration:350},plugins:{legend:{labels:{boxWidth:10,boxHeight:10}},tooltip:{backgroundColor:cssv("--fg"),titleColor:cssv("--surface"),bodyColor:cssv("--surface"),padding:9,cornerRadius:6}},scales:{x:{grid:{display:false},ticks:{color:m},border:{color:line}},y:{grid:{color:line},ticks:{color:m},border:{display:false}}}}}
+function mk(id,cfg){if(charts[id])charts[id].destroy();const el=document.getElementById(id);if(el)charts[id]=new Chart(el,cfg)}
+const pill=(t,c)=>`<span class="pill" style="--pc:var(${c})">${esc(t)}</span>`;
+const go=id=>{const el=document.getElementById(id);if(el)el.scrollIntoView({behavior:"smooth",block:"start"})};
+let BASE=evalSet(last4,NONE),CUR=BASE;
+const weekLabel=w=>"Wk of "+new Date(TODAY+(w*7-DAYS)*864e5).toLocaleDateString("en-GB",{day:"numeric",month:"short",timeZone:"UTC"});
+
+function renderTop(){
+  const f=weekly[0],l=weekly[W-1];const top=RC.causes[0];const atRisk=openOrders.filter(o=>o.p>=.5).length;
+  $("#ticker").innerHTML=`<span class="bad">On-time <b>${pct(l.otd)}</b></span><span>12 wks ago <b>${pct(f.otd)}</b></span><span>Today's at-risk orders <b>${fmt(atRisk)}</b></span>`;
+  $("#pipe").innerHTML=[["01","Diagnose","Trace every order stage",`${fmt(last4.length)} orders · 5 stages`,"s-trend"],["02","Attribute","Regression on delay hours",`Top cause: ${top.l.split(" (")[0].split(",")[0]}`,"s-root"],["03","Predict","Score today's open orders",`${fmt(atRisk)} likely late`,"s-risk"],["04","Improve","Simulate operating levers",`${LEVERS.filter(x=>LV[x.k]).length} of ${LEVERS.length} levers on · ${pct(CUR.otd)}`,"s-levers"]]
+   .map(([n,t,d,v,id])=>`<button data-go="${id}"><span class="st">${n}</span><b>${t}</b><span class="d">${d}</span><span class="v">${v}</span></button>`).join("");
+  const d=(a,b,inv)=>{const x=b-a;if(Math.abs(x)<1e-6)return"";return`<small class="${(inv?x<0:x>0)?"up-good":"up-bad"}">${x>0?"▲":"▼"}</small>`};
+  $("#kpis").innerHTML=[
+    ["On-time vs promise",pct(CUR.otd),`was ${pct(f.otd)} 12 weeks ago`,d(BASE.otd,CUR.otd)],
+    ["Avg delay when late",CUR.avgLateDays.toFixed(1)+" days",`${fmt(CUR.late)} late orders in 4 weeks`,d(BASE.avgLateDays,CUR.avgLateDays,true)],
+    ["First-attempt success",pct(CUR.firstAttempt),"Failed attempts add a full day",d(BASE.firstAttempt,CUR.firstAttempt)],
+    ["Tickets per 1,000 orders",CUR.tickets.toFixed(0),`was ${f.tickets.toFixed(0)} 12 weeks ago`,d(BASE.tickets,CUR.tickets,true)],
+    ["Capacity used",`${pct(l.fcUtil,0)} / ${pct(l.fleetUtil,0)}`,"FC / fleet: room to spare",""],
+    ["Cost of lateness / month",inrS(CUR.costLate),"Coupons, refunds, support · network of 2.6 L orders/mo",d(BASE.costLate,CUR.costLate,true)]
+  ].map(([l2,v,s,dd])=>`<div class="kpi"><span class="l">${l2}</span><span class="v">${v}${dd}</span><span class="s">${s}</span></div>`).join("");
+  $("#trendInsight").innerHTML=`<b>On-time fell from ${pct(f.otd,0)} to ${pct(l.otd,0)} while capacity use stayed under ${pct(Math.max(l.fcUtil,l.fleetUtil),0)}.</b> The slide began in week 4 (QuickShip contract), steepened in week 6 (evening shift attrition at Hyderabad) and week 7 (tier-2 promise cut to 2 days). Capacity was never the bottleneck.`;
+}
+function renderCauses(){
+  const mx=RC.causes[0].share;
+  $("#causes").innerHTML=RC.causes.filter(c=>c.share>.01).map(c=>`<div class="cause"><b>${esc(c.l)}</b><span class="share">${pct(c.share,0)}</span><div class="bar"><i style="width:${(c.share/mx*100).toFixed(0)}%"></i></div><span class="ev">+${c.coef.toFixed(1)} h per affected order · ${pct(c.prevalence,0)} of orders · ${esc(c.ev)}</span></div>`).join("")+
+   `<div class="cause" style="border-style:dashed"><b>Promise set too tight (not a delay)</b><span class="share">${pct(RC.promiseLate/RC.late,0)}</span><span class="ev">of late orders would have been on time against a realistic promise. Tier-2 was cut from 3 days to 2 in week 7. Model fit: R² ${RC.r2.toFixed(2)}.</span></div>`;
+}
+function heat(v,lo,hi,good){const t=clamp((v-lo)/(hi-lo),0,1);return good?`color-mix(in oklab,var(--good) ${Math.round(t*55+6)}%,color-mix(in oklab,var(--crit) ${Math.round((1-t)*55+6)}%,var(--surface)))`:""}
+function renderHeat(){
+  let h=`<table><thead><tr><th class="rl">Shipped from</th>${ZONES.map(z=>`<th>${z==="tier2"?"Tier-2":z[0].toUpperCase()+z.slice(1)}</th>`).join("")}<th>Orders</th></tr></thead><tbody>`;
+  Object.keys(FCS).forEach(fc=>{const os=last4.filter(o=>o.fc===fc);h+=`<tr><th class="rl">${FCS[fc].split(" (")[0]}</th>`+ZONES.map(z=>{const s=os.filter(o=>o.zone===z);if(s.length<30)return`<td style="background:var(--surface-2)">-</td>`;const r=evalSet(s,LV).otd;return`<td style="background:${heat(r,.55,.97,true)}" title="${s.length} orders">${pct(r,0)}</td>`}).join("")+`<td class="mono" style="color:var(--muted)">${fmt(os.length)}</td></tr>`});
+  $("#hmFc").innerHTML=h+"</tbody></table>";
+  const hrs=[8,10,12,14,16,18,20,22];let g=`<table><thead><tr><th class="rl">Hour</th>${[1,2,3,4,5,6,0].map(d=>`<th>${WD[d]}</th>`).join("")}</tr></thead><tbody>`;
+  hrs.forEach(hh=>{g+=`<tr><th class="rl">${hh}:00</th>`+[1,2,3,4,5,6,0].map(d=>{const s=last4.filter(o=>o.wd===d&&o.hour>=hh&&o.hour<hh+2);const r=1-evalSet(s,LV).otd;return`<td style="background:color-mix(in oklab,var(--crit) ${Math.round(clamp(r/.5,0,1)*70+4)}%,var(--surface));color:${r>.35?"var(--surface)":"var(--fg)"}">${pct(r,0)}</td>`}).join("")+"</tr>"});
+  $("#hmHour").innerHTML=g+"</tbody></table>";
+}
+function renderNodes(){
+  const rows=[];
+  Object.entries(CARRIERS).forEach(([k,n])=>{const s=last4.filter(o=>o.carrier===k);const r=evalSet(s,NONE);rows.push({n,sub:"Carrier · "+(k==="SWF"?"metro":"metro, tier-2, rural"),cnt:s.length,otd:r.otd,fa:r.firstAttempt,util:k==="SWF"?.71:k==="PRN"?.63:.82})});
+  Object.entries(FCS).forEach(([k,n])=>{const s=last4.filter(o=>o.fc===k);const r=evalSet(s,NONE);rows.push({n,sub:"Fulfilment centre",cnt:s.length,otd:r.otd,fa:r.firstAttempt,util:{HYD:.78,BLR:.69,MAA:.66,VJA:.58}[k]})});
+  const s=last4.filter(o=>o.region==="Hyderabad"&&o.zone==="metro");const r=evalSet(s,NONE);rows.push({n:"Kukatpally last-mile hub",sub:"Hub · Mon/Tue backlog",cnt:s.length,otd:r.otd,fa:r.firstAttempt,util:.74});
+  $("#nodeRows").innerHTML=rows.map(x=>`<tr><td class="who"><b>${esc(x.n)}</b><span>${x.sub}</span></td><td class="n">${fmt(x.cnt)}</td><td><div class="bar2" style="--w:${(x.otd*100).toFixed(0)}%;--bc:var(${x.otd<.8?"--crit":x.otd<.9?"--warn":"--good"})"><span class="num">${pct(x.otd,0)}</span><i></i></div></td><td class="n">${pct(x.fa,0)}</td><td><div class="bar2" style="--w:${(x.util*100).toFixed(0)}%;--bc:var(--ink2)"><span class="num">${pct(x.util,0)}</span><i></i></div></td></tr>`).join("");
+  const q=rows.find(x=>x.n.startsWith("QuickShip"));
+  $("#nodeInsight").innerHTML=`<b>No node is above 82% utilised</b>, so this is not a capacity problem. QuickShip has the worst on-time (${pct(q.otd,0)}) and first-attempt (${pct(q.fa,0)}) rates, and it is also the busiest, because volume was moved to it for price.`;
+}
+function renderLevers(){
+  $("#levers").innerHTML=LEVERS.map(l=>{const solo=evalSet(last4,{...NONE,[l.k]:true});const gain=solo.otd-BASE.otd;return`<div class="lever" data-on="${LV[l.k]}"><div class="top"><h4>${esc(l.t)}</h4><label class="sw"><input type="checkbox" data-lever="${l.k}" ${LV[l.k]?"checked":""} aria-label="${esc(l.t)}"><span></span></label></div><p>${esc(l.d)}</p><div class="meta"><span class="chip up-good">+${(gain*100).toFixed(1)} pts on-time alone</span><span class="chip">${l.cost?inrS(l.cost)+"/mo":l.k==="carrier"?"≈ "+inrS(Math.round(last4.filter(isMoved).length*9*MONTHLY/last4.length))+"/mo":"No opex"}</span><span class="chip">${esc(l.owner)}</span></div></div>`}).join("");
+  const on=LEVERS.filter(l=>LV[l.k]);const cost=on.reduce((a,l)=>a+(l.k==="carrier"?Math.round(last4.filter(isMoved).length*9*MONTHLY/last4.length):l.cost),0);
+  $("#impact").innerHTML=`<div><span>On-time</span><b>${pct(BASE.otd)} → ${pct(CUR.otd)}</b></div><div><span>Late orders (4 wks)</span><b>${fmt(BASE.late)} → ${fmt(CUR.late)}</b></div><div><span>Tickets / 1,000</span><b>${BASE.tickets.toFixed(0)} → ${CUR.tickets.toFixed(0)}</b></div><div><span>Lever cost / month</span><b>${inrS(cost)}</b></div><div><span>Lateness cost saved / month</span><b class="up-good">${inrS(BASE.costLate-CUR.costLate)}</b> <b><small>${cost?"net "+(BASE.costLate-CUR.costLate-cost>=0?"+":"−")+inrS(Math.abs(BASE.costLate-CUR.costLate-cost)):""}</small></b></div>`;
+}
+function renderRisk(){
+  const top=openOrders.slice(0,18);
+  $("#riskNote").textContent=`${fmt(openOrders.filter(o=>o.p>=.5).length)} of ${fmt(openOrders.length)} open orders are more likely than not to be late`;
+  $("#riskRows").innerHTML=top.map(o=>`<tr><td class="who"><b>${o.id}</b><span>placed ${o.hour}:00 · ${o.cod?"COD":"prepaid"}</span></td><td class="who"><b>${FCS[o.fc].split(" (")[0].replace(" FC","")} → ${esc(o.region)}</b><span>${o.zone} · ${CARRIERS[o.carrier]}</span></td><td class="n">${o.promise/24} days</td><td><div class="bar2" style="--w:${(o.p*100).toFixed(0)}%;--bc:var(${o.p>=.7?"--crit":"--warn"})"><span class="num">${pct(o.p,0)}</span><i></i></div></td><td>${o.reason?esc(o.reason.l):"Combined minor factors"}</td><td style="font-size:12.5px">${o.reason?esc(ACTION[o.reason.k]):"Send proactive ETA update"}</td></tr>`).join("");
+}
+function renderCharts(){
+  if(!hasChart)return;const o=baseOpts();const acc=cssv("--accent"),crit=cssv("--crit"),ink2=cssv("--ink2"),sig2=cssv("--signal"),mut=cssv("--muted");
+  mk("cTrend",{data:{labels:weekly.map(x=>weekLabel(x.w)),datasets:[{type:"bar",label:"Orders",data:weekly.map(x=>x.n),backgroundColor:alpha(mut,.22),borderRadius:3,yAxisID:"y1",order:3},{type:"line",label:"On-time %",data:weekly.map(x=>+(x.otd*100).toFixed(1)),borderColor:crit,backgroundColor:crit,borderWidth:2.6,pointRadius:3,tension:.3,yAxisID:"y",order:1},{type:"line",label:"FC utilisation %",data:weekly.map(x=>+(x.fcUtil*100).toFixed(1)),borderColor:ink2,borderDash:[5,4],borderWidth:1.8,pointRadius:0,yAxisID:"y",order:2},{type:"line",label:"Fleet utilisation %",data:weekly.map(x=>+(x.fleetUtil*100).toFixed(1)),borderColor:acc,borderDash:[2,3],borderWidth:1.8,pointRadius:0,yAxisID:"y",order:2}]},
+    options:{...o,interaction:{mode:"index",intersect:false},scales:{x:{...o.scales.x,ticks:{...o.scales.x.ticks,maxRotation:0,autoSkip:true,maxTicksLimit:6}},y:{...o.scales.y,min:50,max:100,ticks:{...o.scales.y.ticks,callback:v=>v+"%"}},y1:{position:"right",grid:{display:false},ticks:{color:mut},border:{display:false},beginAtZero:true,title:{display:true,text:"orders"}}}}});
+  mk("cTickets",{type:"bar",data:{labels:TICKETS.map(t=>t[0]),datasets:[{label:"Share of tickets",data:TICKETS.map(t=>t[1]),backgroundColor:TICKETS.map((t,i)=>i<4?sig2:alpha(sig2,.35)),borderRadius:4}]},options:{...o,indexAxis:"y",plugins:{...o.plugins,legend:{display:false},tooltip:{...o.plugins.tooltip,callbacks:{label:c=>c.raw+"% of tickets"}}},scales:{x:{...o.scales.y,ticks:{...o.scales.y.ticks,callback:v=>v+"%"}},y:{grid:{display:false},ticks:{color:cssv("--fg")},border:{display:false}}}}});
+  const agg=(late)=>{const s=last4.map(x=>({x,s:stages(x,NONE)})).filter(r=>(r.s.total>r.x.promise)===late);const n=s.length||1;return["pick","line","hub","lm"].map(k=>s.reduce((a,r)=>a+r.s[k],0)/n)};
+  const on=agg(false),la=agg(true);
+  mk("cStage",{type:"bar",data:{labels:["Pick & pack (incl. wait)","Linehaul","Hub sort","Last mile (incl. re-attempts)"],datasets:[{label:"On-time orders",data:on.map(v=>+v.toFixed(1)),backgroundColor:alpha(acc,.75),borderRadius:4},{label:"Late orders",data:la.map(v=>+v.toFixed(1)),backgroundColor:crit,borderRadius:4}]},
+    options:{...o,scales:{x:{...o.scales.x,ticks:{...o.scales.x.ticks,autoSkip:false,maxRotation:0,callback:function(v){const s=this.getLabelForValue(v);return s.split(" (")}}},y:{...o.scales.y,beginAtZero:true,title:{display:true,text:"hours"}}}}});
+  mk("cZone",{type:"bar",data:{labels:["Metro","Tier-2","Rural"],datasets:[{label:"Today",data:ZONES.map(z=>+(BASE.byZone[z]*100).toFixed(1)),backgroundColor:alpha(crit,.7),borderRadius:4},{label:"With selected levers",data:ZONES.map(z=>+(CUR.byZone[z]*100).toFixed(1)),backgroundColor:acc,borderRadius:4}]},
+    options:{...o,indexAxis:"y",scales:{x:{...o.scales.y,min:40,max:100,ticks:{...o.scales.y.ticks,callback:v=>v+"%"},title:{display:true,text:"On-time %"}},y:{grid:{display:false},ticks:{color:cssv("--fg")},border:{display:false}}}}});
+}
+function recalc(){CUR=evalSet(last4,LV)}
+function renderAll(){recalc();renderTop();renderCauses();renderHeat();renderNodes();renderLevers();renderRisk();renderCharts()}
+
+/* ===================== AGENT TOOLS ===================== */
+const findLever=t=>{const l=t.toLowerCase();if(/staff|picker|evening|shift|cut-?off/.test(l))return"staff";if(/position|inventory|stock|wrong fc|cross/.test(l))return"position";if(/carrier|quickship|parcelrun|reallocat/.test(l))return"carrier";if(/address|geo|pin|whatsapp/.test(l))return"address";if(/promise|eta|edd/.test(l))return"promise";if(/hub|kukatpally|monday|backlog/.test(l))return"hub";return null};
+const T={
+ performance_overview(){const f=weekly[0],l=weekly[W-1];return{weeks:W,on_time_first_week:+f.otd.toFixed(3),on_time_last_week:+l.otd.toFixed(3),orders_last_week:l.n,fc_util_last_week:+l.fcUtil.toFixed(2),fleet_util_last_week:+l.fleetUtil.toFixed(2),
+   last_4_weeks:{orders:BASE.n,on_time:+BASE.otd.toFixed(3),late_orders:BASE.late,avg_late_days:+BASE.avgLateDays.toFixed(2),first_attempt_success:+BASE.firstAttempt.toFixed(3),tickets_per_1000:+BASE.tickets.toFixed(0),lateness_cost_per_month_inr:Math.round(BASE.costLate)},
+   timeline:["Week 4: tier-2/rural volume moved to QuickShip for a cheaper rate","Week 6: Hyderabad evening shift attrition; picker fill rate falls to ~72%","Week 7: tier-2 promise cut from 3 days to 2","Weeks 3–11: share of Hyderabad orders shipped from other FCs rose from 7% to 22%"],
+   ticket_topics:TICKETS,levers_on:LEVERS.filter(x=>LV[x.k]).map(x=>x.k),with_levers:{on_time:+CUR.otd.toFixed(3),tickets_per_1000:+CUR.tickets.toFixed(0)}}},
+ root_causes(){return{model:"OLS on excess delivery hours, last 4 weeks",r2:+RC.r2.toFixed(2),causes:RC.causes.map(c=>({cause:c.l,share_of_late_hours:+c.share.toFixed(3),hours_per_affected_order:+c.coef.toFixed(1),share_of_orders_affected:+c.prevalence.toFixed(3),evidence:c.ev})),promise_too_tight_share_of_late:+(RC.promiseLate/RC.late).toFixed(3)}},
+ segment_performance({dimension}){const d=String(dimension||"carrier").toLowerCase();let out=[];
+   if(/carrier/.test(d))out=Object.entries(CARRIERS).map(([k,n])=>{const s=last4.filter(o=>o.carrier===k);const r=evalSet(s,NONE);return{segment:n,orders:s.length,on_time:+r.otd.toFixed(3),first_attempt:+r.firstAttempt.toFixed(3)}});
+   else if(/fc|warehouse|fulfil/.test(d))out=Object.entries(FCS).map(([k,n])=>{const s=last4.filter(o=>o.fc===k);const r=evalSet(s,NONE);return{segment:n,orders:s.length,on_time:+r.otd.toFixed(3),cross_fc_share:+(s.filter(o=>o.cross).length/s.length).toFixed(3)}});
+   else if(/zone|tier|rural|metro/.test(d))out=ZONES.map(z=>{const s=last4.filter(o=>o.zone===z);const r=evalSet(s,NONE);return{segment:z,orders:s.length,on_time:+r.otd.toFixed(3),promise_hours:PROMISE[z],realistic_promise_hours:REAL_PROMISE[z]}});
+   else if(/hour|time|day/.test(d))out=[[8,14],[14,18],[18,24]].map(([a,b])=>{const s=last4.filter(o=>o.hour>=a&&o.hour<b);const r=evalSet(s,NONE);const hy=s.filter(o=>o.fc==="HYD");return{segment:`${a}:00–${b}:00`,orders:s.length,on_time:+r.otd.toFixed(3),on_time_hyd_fc:+evalSet(hy,NONE).otd.toFixed(3)}});
+   else out=REGIONS.map(g=>{const s=last4.filter(o=>o.region===g.r);const r=evalSet(s,NONE);return{segment:g.r,orders:s.length,on_time:+r.otd.toFixed(3)}});
+   return{dimension:d,segments:out}},
+ simulate_levers({levers,on}){const ks=(Array.isArray(levers)?levers:String(levers||"").split(/[ ,]+/)).map(String).filter(k=>k in LV);const before={on_time:+CUR.otd.toFixed(3),late:CUR.late};ks.forEach(k=>LV[k]=on!==false);renderAll();
+   const cost=LEVERS.filter(l=>LV[l.k]).reduce((a,l)=>a+(l.k==="carrier"?Math.round(last4.filter(isMoved).length*9*MONTHLY/last4.length):l.cost),0);
+   return{changed:ks,now_on:LEVERS.filter(l=>LV[l.k]).map(l=>l.k),before,after:{on_time:+CUR.otd.toFixed(3),late:CUR.late,tickets_per_1000:+CUR.tickets.toFixed(0),first_attempt:+CUR.firstAttempt.toFixed(3)},baseline_on_time:+BASE.otd.toFixed(3),lever_cost_per_month_inr:Math.round(cost),lateness_cost_saved_per_month_inr:Math.round(BASE.costLate-CUR.costLate),
+     each_lever_alone:LEVERS.map(l=>({lever:l.k,title:l.t,on_time_gain_pts:+((evalSet(last4,{...NONE,[l.k]:true}).otd-BASE.otd)*100).toFixed(1),cost_per_month_inr:l.k==="carrier"?Math.round(last4.filter(isMoved).length*9*MONTHLY/last4.length):l.cost}))}},
+ at_risk_orders({limit}){const n=clamp(+limit||10,1,25);return{open_orders:openOrders.length,likely_late:openOrders.filter(o=>o.p>=.5).length,by_reason:Object.fromEntries(FEATS.map(f=>[f.l,openOrders.filter(o=>o.p>=.5&&o.reason===f).length]).filter(x=>x[1])),orders:openOrders.slice(0,n).map(o=>({id:o.id,route:`${o.fc} → ${o.region} (${o.zone})`,carrier:CARRIERS[o.carrier],promise_days:o.promise/24,late_risk:+o.p.toFixed(2),reason:o.reason?o.reason.l:"combined",action:o.reason?ACTION[o.reason.k]:"proactive ETA update"}))}},
+ order_lookup({id}){const all=[...openOrders,...last4];const o=all.find(x=>x.id.toLowerCase()===String(id||"").toLowerCase());if(!o)throw new Error("Order not found");if(o.p!=null)return{id:o.id,status:"open",route:`${FCS[o.fc]} → ${o.region}`,zone:o.zone,carrier:CARRIERS[o.carrier],cross_fc:o.cross,placed_hour:o.hour,cod:o.cod,poor_address:o.poorAddr,promise_hours:o.promise,predicted_hours:+o.pred.toFixed(0),late_risk:+o.p.toFixed(2),main_reason:o.reason?o.reason.l:null,action:o.reason?ACTION[o.reason.k]:null};
+   const s=stages(o,NONE);return{id:o.id,status:"delivered",placed:dl(o.day)+" "+o.hour+":00",route:`${FCS[o.fc]} → ${o.region}`,zone:o.zone,carrier:CARRIERS[o.carrier],stages_hours:{pick_pack:+s.pick.toFixed(1),linehaul:+s.line.toFixed(1),hub:+s.hub.toFixed(1),last_mile:+s.lm.toFixed(1)},failed_first_attempt:s.failed,total_hours:+s.total.toFixed(0),promise_hours:o.promise,late:s.total>o.promise}}
+};
+
+/* ===================== BUILT-IN ENGINE ===================== */
+function local(q){
+  const steps=[];const call=(n,a)=>{steps.push(n+"("+(a?Object.values(a).map(v=>Array.isArray(v)?v.join("+"):v).filter(v=>v!=null&&v!=="").join(", "):"")+")");return T[n](a||{})};
+  const t=q.toLowerCase();
+  const idm=q.match(/\bOD\d{6}\b/i);
+  if(idm){const o=call("order_lookup",{id:idm[0].toUpperCase()});
+    return{steps,text:o.status==="open"?`#### ${o.id}: open, ${pct(o.late_risk,0)} late risk\n${o.route} (${o.zone}) via ${o.carrier}. Placed at ${o.placed_hour}:00, ${o.cod?"COD":"prepaid"}${o.poor_address?", address quality low":""}${o.cross_fc?", shipping from another FC":""}.\n\nPredicted **${o.predicted_hours} h** against a ${o.promise_hours} h promise.\n\n**Main reason:** ${o.main_reason||"several small factors"}\n**Do now:** ${o.action||"send a proactive ETA update"}`
+      :`#### ${o.id}: delivered ${o.late?"**late**":"on time"}\n${o.route} · ${o.carrier}\n- Pick & pack ${o.stages_hours.pick_pack} h · linehaul ${o.stages_hours.linehaul} h · hub ${o.stages_hours.hub} h · last mile ${o.stages_hours.last_mile} h${o.failed_first_attempt?" (failed first attempt)":""}\n- Total **${o.total_hours} h** vs promise ${o.promise_hours} h`}}
+  const lv=findLever(t);
+  if(lv&&/what if|turn on|switch on|enable|simulate|apply|fix|add|move|hire|if we|turn off|disable|remove/.test(t)){const off=/turn off|disable|remove|without|undo/.test(t);const all=/all levers|everything|all of them/.test(t);const r=call("simulate_levers",{levers:all?LEVERS.map(l=>l.k):[lv],on:!off});const one=r.each_lever_alone.find(x=>x.lever===lv);
+    return{steps,text:`#### ${off?"Removed":"Applied"}: ${all?"all levers":LEVERS.find(l=>l.k===lv).t}\n- On-time: ${pct(r.before.on_time)} → **${pct(r.after.on_time)}** (baseline ${pct(r.baseline_on_time)})\n- Late orders in 4 weeks: ${fmt(r.before.late)} → **${fmt(r.after.late)}**\n- Tickets per 1,000: **${r.after.tickets_per_1000}**\n- Levers on: ${r.now_on.join(", ")||"none"} · cost ${inrS(r.lever_cost_per_month_inr)}/mo vs ${inrS(r.lateness_cost_saved_per_month_inr)}/mo lateness cost saved\n${!all?`\nOn its own this lever is worth **+${one.on_time_gain_pts} pts**.`:""}\n\nThe dashboard has been updated.`}}
+  if(/all levers|best plan|what should we do|recommend|improve|fix|plan|roadmap|priorit/.test(t)){const r=call("simulate_levers",{levers:LEVERS.map(l=>l.k),on:true});const ranked=[...r.each_lever_alone].sort((a,b)=>b.on_time_gain_pts-a.on_time_gain_pts);
+    return{steps,text:`#### Improvement plan, ranked by impact\n${ranked.map((l,i)=>`${i+1}. **${l.title}**: +${l.on_time_gain_pts} pts on its own · ${l.cost_per_month_inr?inrS(l.cost_per_month_inr)+"/mo":"no opex"}`).join("\n")}\n\n**All six together:** on-time ${pct(r.baseline_on_time)} → **${pct(r.after.on_time)}**, tickets down to ${r.after.tickets_per_1000} per 1,000, for ${inrS(r.lever_cost_per_month_inr)}/mo against ${inrS(r.lateness_cost_saved_per_month_inr)}/mo of lateness cost saved.\n\n**Sequence:** fix promises (no cost, this week), re-allocate carriers (this week), then evening staffing and stock positioning (2–4 weeks). I've switched all levers on in the dashboard.`}}
+  if(/carrier|quickship|parcelrun|swiftlane|fc|warehouse|zone|tier|rural|metro|hour|evening|night|region|segment/.test(t)&&!/why/.test(t)){const dim=/carrier|quickship|parcelrun|swiftlane/.test(t)?"carrier":/fc|warehouse/.test(t)?"fc":/zone|tier|rural|metro/.test(t)?"zone":/hour|evening|night/.test(t)?"hour":"region";const r=call("segment_performance",{dimension:dim});
+    return{steps,text:`#### On-time by ${dim}\n${r.segments.map(s=>`- **${s.segment}**: ${pct(s.on_time)} of ${fmt(s.orders)} orders${s.first_attempt!=null?`, first attempt ${pct(s.first_attempt,0)}`:""}${s.cross_fc_share!=null?`, ${pct(s.cross_fc_share,0)} shipped from another FC's stock`:""}${s.promise_hours!=null?`, promise ${s.promise_hours/24}d (realistic ${s.realistic_promise_hours/24}d)`:""}${s.on_time_hyd_fc!=null?`, Hyderabad FC ${pct(s.on_time_hyd_fc)}`:""}`).join("\n")}`}}
+  if(/promise|eta|delivery date|edd/.test(t)&&!/what if|turn|switch|enable/.test(t)){const rc=call("root_causes");const z=call("segment_performance",{dimension:"zone"});const solo=evalSet(last4,{...NONE,promise:true});
+    return{steps,text:`#### Yes: part of "late" is a promise problem, not a delivery problem\n**${pct(rc.promise_too_tight_share_of_late,0)}** of late orders arrived within a realistic delivery time but after the date shown at checkout.\n${z.segments.map(s=>`- ${s.segment}: on-time ${pct(s.on_time)}; promise ${s.promise_hours/24}d vs realistic ${s.realistic_promise_hours/24}d`).join("\n")}\n\nThe tier-2 promise was cut from 3 days to 2 in week 7 with no change in operations. A promise set from predicted delivery time would lift on-time to **${pct(solo.otd)}** on its own, at no cost. It may cost a little conversion at checkout, but it removes the broken promise that drives "where is my order" tickets. It is not a substitute for fixing the operational causes.`}}
+  if(/today|at.?risk|open order|likely late|proactive/.test(t)){const r=call("at_risk_orders",{limit:8});
+    return{steps,text:`#### ${fmt(r.likely_late)} of ${fmt(r.open_orders)} open orders are likely to be late\n**By main reason:** ${Object.entries(r.by_reason).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`${k} ${v}`).join("; ")}\n\n**Highest risk**\n${r.orders.map(o=>`- ${o.id} · ${o.route} · ${pct(o.late_risk,0)} → ${o.action}`).join("\n")}\n\nActing on these today avoids most of tomorrow's "where is my order" tickets.`}}
+  const o=call("performance_overview");const rc=call("root_causes");
+  return{steps,text:`#### Why deliveries got worse with capacity to spare\nOn-time fell from **${pct(o.on_time_first_week,0)} to ${pct(o.on_time_last_week,0)}** in 12 weeks, while FCs ran at ${pct(o.fc_util_last_week,0)} and the fleet at ${pct(o.fleet_util_last_week,0)}. The problem is **where and when** capacity is used, not how much exists.\n\n**Root causes (share of late-delivery hours)**\n${rc.causes.filter(c=>c.share_of_late_hours>.03).map((c,i)=>`${i+1}. ${c.cause}: **${pct(c.share_of_late_hours,0)}** (+${c.hours_per_affected_order} h each)`).join("\n")}\n\nAlso, **${pct(rc.promise_too_tight_share_of_late,0)}** of "late" orders would be on time against a realistic promise; the tier-2 promise was cut to 2 days in week 7.\n\n**What changed:** ${o.timeline.join("; ")}.\n\nAsk "what's the best plan?" to simulate the fixes.`};
+}
+
+/* ===================== CLAUDE ENGINE ===================== */
+let sample=null,useClaude=false,claudeOK=false;
+const TOOLDEFS=[
+ {name:"performance_overview",description:"12-week on-time trend, capacity use, last-4-week KPIs, timeline of operational changes, ticket topics, current lever state. Call first for broad questions."},
+ {name:"root_causes",description:"Regression-based ranking of root causes: share of late-delivery hours, hours added per affected order, prevalence, evidence; plus share of late orders caused only by tight promises."},
+ {name:"segment_performance",description:"On-time by a dimension: carrier, fc, zone, hour, or region.",inputSchema:{type:"object",properties:{dimension:{type:"string",enum:["carrier","fc","zone","hour","region"]}},required:["dimension"]}},
+ {name:"simulate_levers",description:"Turn improvement levers on/off (staff, position, carrier, address, promise, hub), re-simulate the last 4 weeks of orders, update the dashboard, and return before/after plus each lever's stand-alone gain and cost.",inputSchema:{type:"object",properties:{levers:{type:"array",items:{type:"string",enum:LEVERS.map(l=>l.k)}},on:{type:"boolean"}},required:["levers"]}},
+ {name:"at_risk_orders",description:"Today's open orders most likely to be late, with main reason and proactive action.",inputSchema:{type:"object",properties:{limit:{type:"number"}}}},
+ {name:"order_lookup",description:"Look up one order by id (e.g. OD512345): stage hours or prediction.",inputSchema:{type:"object",properties:{id:{type:"string"}},required:["id"]}}
+];
+const RULES=`You are Ops Agent, an AI delivery-performance analyst for a South India e-commerce company (FCs in Hyderabad, Bengaluru, Chennai, Vijayawada; carriers Swiftlane own fleet, ParcelRun, QuickShip; metro/tier-2/rural zones). All data is assumed/synthetic for a case study. Today is 26 Oct 2026. Every order is traced through pick & pack, linehaul, hub sort, last mile; an OLS regression on excess delivery hours attributes delay to operational factors; open orders are scored for late risk with the same model; levers are simulated by re-running the last 4 weeks of orders. Capacity is adequate (FC ~75%, fleet ~70%). Use tools for every number; never invent orders or figures. Use simulate_levers for what-if questions and say the dashboard changed. Indian currency (₹, lakh). Lead with the answer, then evidence, then actions. Under ~220 words. Short markdown: '####' headings, bullets, numbered steps, **bold** for key numbers.`;
+async function askClaude(q,hist,onStep,onText,signal){const turns=[{role:"user",content:RULES},...hist.slice(-8),{role:"user",content:q}];
+  const tools=TOOLDEFS.map(d=>({...d,execute:i=>{onStep(d.name+"("+Object.values(i||{}).map(v=>Array.isArray(v)?v.join("+"):v).join(", ")+")");return T[d.name](i||{})}}));
+  return(await sample(turns,{tools,signal,modelTier:"quick",onText:({text})=>onText(text)})).text}
+
+/* ===================== CHAT ===================== */
+const hist=[];let busy=false,ctl=null;
+function md(s){const lines=String(s).replace(/\r/g,"").split("\n");let out="",list=null,tbl=[];
+  const inl=x=>esc(x).replace(/\*\*(.+?)\*\*/g,"<b>$1</b>").replace(/(^|[^*])\*([^*\n]+)\*/g,"$1<i>$2</i>").replace(/`([^`]+)`/g,"<code>$1</code>");
+  const close=()=>{if(list){out+=`</${list}>`;list=null}};const flushT=()=>{if(!tbl.length)return;const rows=tbl.filter(r=>!/^\s*\|?\s*:?-{2,}/.test(r)).map(r=>r.trim().replace(/^\||\|$/g,"").split("|"));out+="<table>"+rows.map((r,i)=>"<tr>"+r.map(c=>i?`<td>${inl(c.trim())}</td>`:`<th>${inl(c.trim())}</th>`).join("")+"</tr>").join("")+"</table>";tbl=[]};
+  for(const l of lines){if(/^\s*\|.*\|\s*$/.test(l)){close();tbl.push(l);continue}else flushT();let m;
+    if(m=l.match(/^#{1,6}\s+(.*)/)){close();out+=`<h4>${inl(m[1])}</h4>`}else if(m=l.match(/^\s*[-*•]\s+(.*)/)){if(list!=="ul"){close();out+="<ul>";list="ul"}out+=`<li>${inl(m[1])}</li>`}
+    else if(m=l.match(/^\s*\d+[.)]\s+(.*)/)){if(list!=="ol"){close();out+="<ol>";list="ol"}out+=`<li>${inl(m[1])}</li>`}else if(l.trim()===""){close()}else{close();out+=`<p>${inl(l)}</p>`}}
+  close();flushT();return out}
+function addMsg(role,html){const d=document.createElement("div");d.className="msg "+role;if(role==="u")d.textContent=html;else d.innerHTML=`<div class="trace"></div><div class="body">${html}</div>`;$("#msgs").appendChild(d);$("#msgs").scrollTop=$("#msgs").scrollHeight;return d}
+function engineLabel(){$("#engineBtn").innerHTML=useClaude?"engine: <b>Claude · live</b>":"engine: <b>built-in</b>"}
+async function send(q){q=q.trim();if(!q||busy)return;busy=true;$("#sendBtn").textContent="Stop";$("#q").value="";
+  addMsg("u",q);const m=addMsg("a",`<span class="thinking">Analysing…</span>`);const tr=m.querySelector(".trace"),body=m.querySelector(".body");
+  const step=s=>{const sp=document.createElement("span");sp.textContent=s;tr.appendChild(sp)};let text="";
+  try{if(useClaude&&sample){ctl=new AbortController();text=await askClaude(q,hist,step,t=>{body.innerHTML=md(t);$("#msgs").scrollTop=$("#msgs").scrollHeight},ctl.signal);body.innerHTML=md(text)}
+    else{await new Promise(r=>setTimeout(r,350));const r=local(q);r.steps.forEach(step);text=r.text;body.innerHTML=md(text)}
+    hist.push({role:"user",content:q},{role:"assistant",content:text})}
+  catch(e){const c=e&&e.code;
+    if(c==="cancelled")body.innerHTML=e.text?md(e.text):`<span class="thinking">Stopped.</span>`;
+    else if(["not_granted","sampling_disabled","not_declared","capability_disabled","capability_removed","tools_unavailable"].includes(c)){claudeOK=false;useClaude=false;engineLabel();const r=local(q);r.steps.forEach(step);body.innerHTML=`<p class="note">Claude isn't available here, so the built-in engine answered.</p>`+md(r.text);hist.push({role:"user",content:q},{role:"assistant",content:r.text})}
+    else if(c==="rate_limited")body.innerHTML=`<p>Claude is rate-limited right now. Try again in a minute or switch to the built-in engine.</p>`;
+    else if(c)body.innerHTML=(e.text?md(e.text):"")+`<p class="note">The answer was interrupted (${esc(c)}). Send again to retry.</p>`;
+    else body.innerHTML=`<p>Something went wrong: ${esc(e&&e.message||e)}</p>`}
+  finally{busy=false;ctl=null;$("#sendBtn").textContent="Send";$("#msgs").scrollTop=$("#msgs").scrollHeight}}
+function greet(){const f=weekly[0],l=weekly[W-1];addMsg("a",md(`#### Ops agent ready\nOn-time delivery fell from **${pct(f.otd,0)} to ${pct(l.otd,0)}** in 12 weeks with FCs and fleet below 80% utilised. The biggest driver is **${RC.causes[0].l.toLowerCase()}** (${pct(RC.causes[0].share,0)} of late hours), followed by ${RC.causes[1].l.toLowerCase()}.\n\n**${fmt(openOrders.filter(o=>o.p>=.5).length)}** of today's open orders are likely to be late. Ask me why, about a carrier or FC, or "what's the best plan?" to simulate fixes.`))}
+$("#sugg").innerHTML=["Why are deliveries late when we have capacity?","How do the carriers compare?","Which of today's orders will be late?","What if we staff the Hyderabad evening shift?","What's the best improvement plan?","Is the promise date part of the problem?"].map(s=>`<button type="button">${esc(s)}</button>`).join("");
+
+/* ===================== EVENTS ===================== */
+document.addEventListener("click",e=>{
+  const g=e.target.closest("[data-go]");if(g){go(g.dataset.go);return}
+  const sg=e.target.closest("#sugg button");if(sg){send(sg.textContent);return}
+});
+document.addEventListener("change",e=>{const l=e.target.closest("[data-lever]");if(l){LV[l.dataset.lever]=l.checked;renderAll()}});
+$("#composer").addEventListener("submit",e=>{e.preventDefault();if(busy&&ctl){ctl.abort();return}send($("#q").value)});
+$("#q").addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();$("#composer").requestSubmit()}});
+$("#engineBtn").addEventListener("click",()=>{if(!claudeOK){addMsg("a",md("Claude isn't available in this view, so I'm using the built-in analytics engine. It runs the same tools on the same data."));return}useClaude=!useClaude;engineLabel()});
+$("#fab").addEventListener("click",()=>go("agent"));
+const redraw=()=>renderCharts();
+try{matchMedia("(prefers-color-scheme: dark)").addEventListener("change",redraw)}catch(_){}
+new MutationObserver(redraw).observe(document.documentElement,{attributes:true,attributeFilter:["data-theme"]});
+
+renderAll();engineLabel();greet();
+(async()=>{try{if(!window.claude||!window.claude.use)return;const s=await window.claude.use("sample");if(!s)return;const lim=await s.limits().catch(()=>null);if(!lim||!lim.tools)return;sample=s;claudeOK=true;useClaude=true;engineLabel()}catch(_){}})();
+})();
+</script>
+
+</body></html>
